@@ -9,17 +9,28 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
+/**
+ * Define el esquema de colores para el tema oscuro de la aplicación.
+ * Utiliza los colores institucionales del IT Chetumal.
+ */
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
+    primary = ITChetumalBlue,
+    secondary = ITChetumalOrange,
     tertiary = Pink80
 )
 
+/**
+ * Define el esquema de colores para el tema claro de la aplicación.
+ * Utiliza los colores institucionales del IT Chetumal.
+ */
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
+    primary = ITChetumalBlue,
+    secondary = ITChetumalOrange,
     tertiary = Pink40
 
     /* Other default colors to override
@@ -33,11 +44,19 @@ private val LightColorScheme = lightColorScheme(
     */
 )
 
+/**
+ * Composable principal del tema de la aplicación.
+ * Aplica los esquemas de color definidos y configura la barra de estado.
+ *
+ * @param darkTheme Indica si se debe usar el tema oscuro (basado en la configuración del sistema).
+ * @param dynamicColor Desactivado (`false`) para asegurar que siempre se usen nuestros colores personalizados del IT Chetumal.
+ * @param content El contenido de la aplicación al que se le aplicará el tema.
+ */
 @Composable
 fun ContabilidadTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Dynamic color está disponible en Android 12+. Lo desactivamos para mantener la marca.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -48,6 +67,12 @@ fun ContabilidadTheme(
 
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
+    }
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        val window = (view.context as Activity).window
+        window.statusBarColor = colorScheme.primary.toArgb()
+        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
     }
 
     MaterialTheme(

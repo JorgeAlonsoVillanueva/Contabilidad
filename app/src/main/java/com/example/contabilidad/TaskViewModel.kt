@@ -8,13 +8,13 @@ import androidx.lifecycle.ViewModel
 import java.util.UUID
 
 /**
- * Define la estructura de una tarea.
- * Esta es la capa "Modelo" en el patrón MVVM.
+ * Define la estructura de datos para una Tarea. Esta es la capa "MODELO" en la arquitectura MVVM.
+ * Es una clase de datos simple que contiene las propiedades de una tarea.
  *
- * @property id El identificador único de la tarea.
+ * @property id El identificador único de la tarea, generado automáticamente.
  * @property name El nombre o descripción de la tarea.
- * @property isCompleted Indica si la tarea se ha completado.
- * @property dueDate La fecha de vencimiento de la tarea en milisegundos.
+ * @property isCompleted Un booleano que indica si la tarea ha sido completada.
+ * @property dueDate Una marca de tiempo opcional (en milisegundos) para la fecha de vencimiento.
  */
 data class Task(
     val id: UUID = UUID.randomUUID(),
@@ -24,18 +24,18 @@ data class Task(
 )
 
 /**
- * Enum para los diferentes estados de filtro.
+ * Enum para representar los diferentes estados de filtro de la lista de tareas.
  */
 enum class TaskFilter { ALL, PENDING, COMPLETED }
 
 /**
- * Gestiona el estado y la lógica de negocio de la pantalla de la lista de tareas.
- * Esta es la capa "ViewModel" en el patrón MVVM.
+ * Gestiona el estado de la interfaz de usuario y la lógica de negocio. Esta es la capa "VIEWMODEL" en la arquitectura MVVM.
+ * Expone los datos a la "Vista" y maneja las acciones del usuario (añadir, borrar, etc.) sin tener conocimiento directo de la interfaz de usuario.
  */
 class TaskViewModel : ViewModel() {
 
     /**
-     * La lista maestra de todas las tareas. Es privada para la escritura, pero pública para la lectura.
+     * La lista maestra de todas las tareas. Es privada para evitar modificaciones directas desde la Vista.
      */
     var allTasks by mutableStateOf(
         listOf(
@@ -48,59 +48,45 @@ class TaskViewModel : ViewModel() {
     )
         private set
 
+    // Almacena temporalmente una tarea eliminada para la función "Deshacer".
+    private var recentlyDeletedTask: Task? = null
+
     /**
-     * Una lista derivada que solo contiene las tareas pendientes.
+     * Una lista derivada y reactiva que solo contiene las tareas pendientes.
+     * Se recalcula automáticamente cuando `allTasks` cambia.
      */
     val pendingTasks by derivedStateOf { allTasks.filter { !it.isCompleted } }
 
     /**
-     * Una lista derivada que solo contiene las tareas completadas.
+     * Una lista derivada y reactiva que solo contiene las tareas completadas.
+     * Se recalcula automáticamente cuando `allTasks` cambia.
      */
     val completedTasks by derivedStateOf { allTasks.filter { it.isCompleted } }
 
     /**
-     * El filtro actualmente seleccionado.
-     */
-    var filter by mutableStateOf(TaskFilter.PENDING)
-        private set
-
-    /**
-     * El nombre de la nueva tarea que se está introduciendo.
+     * El nombre de la nueva tarea que el usuario está escribiendo en el campo de texto.
      */
     var newTaskName by mutableStateOf("")
 
     /**
-     * Actualiza el nombre de la nueva tarea.
-     *
-     * @param name El nuevo nombre de la tarea.
+     * Actualiza el valor de `newTaskName`. Es llamado por la Vista cada vez que el usuario escribe.
      */
     fun onNewTaskNameChange(name: String) {
         newTaskName = name
     }
 
     /**
-     * Cambia el filtro actual.
-     * @param newFilter El nuevo filtro a aplicar.
-     */
-    fun onFilterChange(newFilter: TaskFilter) {
-        filter = newFilter
-    }
-
-    /**
-     * Añade una nueva tarea a la lista.
+     * Añade una nueva tarea a la lista `allTasks` si el nombre no está vacío.
      */
     fun addTask() {
         if (newTaskName.isNotBlank()) {
             allTasks = allTasks + Task(name = newTaskName)
-            newTaskName = ""
+            newTaskName = "" // Limpia el campo de texto después de añadir
         }
     }
 
     /**
-     * Actualiza el estado de finalización de una tarea.
-     *
-     * @param task La tarea que se va a actualizar.
-     * @param isChecked El nuevo estado de finalización.
+     * Cambia el estado de `isCompleted` de una tarea específica.
      */
     fun onTaskCheckedChanged(task: Task, isChecked: Boolean) {
         allTasks = allTasks.map {
@@ -113,10 +99,7 @@ class TaskViewModel : ViewModel() {
     }
 
     /**
-     * Actualiza la fecha de vencimiento de una tarea.
-     *
-     * @param task La tarea que se va a actualizar.
-     * @param dueDate La nueva fecha de vencimiento.
+     * Actualiza la fecha de vencimiento `dueDate` de una tarea específica.
      */
     fun onDueDateChange(task: Task, dueDate: Long?) {
         allTasks = allTasks.map {
@@ -129,11 +112,20 @@ class TaskViewModel : ViewModel() {
     }
 
     /**
-     * Elimina una tarea de la lista.
-     *
-     * @param task La tarea que se va a eliminar.
+     * Elimina una tarea de la lista principal y la guarda temporalmente por si el usuario quiere deshacer la acción.
      */
     fun deleteTask(task: Task) {
+        recentlyDeletedTask = task
         allTasks = allTasks.filterNot { it.id == task.id }
+    }
+
+    /**
+     * Restaura la tarea eliminada recientemente a la lista principal.
+     */
+    fun undoDelete() {
+        recentlyDeletedTask?.let { task ->
+            allTasks = allTasks + task
+            recentlyDeletedTask = null
+        }
     }
 }

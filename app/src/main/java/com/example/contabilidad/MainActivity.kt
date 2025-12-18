@@ -39,6 +39,10 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * MainActivity es la actividad principal y el punto de entrada de la aplicación.
+ * Su única responsabilidad es configurar el tema y mostrar el Composable principal, `TaskListScreen`.
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +60,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Representa la pantalla principal de la aplicación. Esta es la "VISTA" en la arquitectura MVVM.
+ * Se encarga de dibujar la interfaz de usuario y delegar todas las acciones del usuario al `TaskViewModel`.
+ *
+ * @param taskViewModel El ViewModel que contiene el estado y la lógica de negocio.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TaskListScreen(taskViewModel: TaskViewModel = viewModel()) {
@@ -64,14 +74,31 @@ fun TaskListScreen(taskViewModel: TaskViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     var showError by remember { mutableStateOf(false) }
 
-    // State for the dialogs
+    // Estados para gestionar los diálogos
     var showDatePicker by remember { mutableStateOf(false) }
     var taskToSetDate: Task? by remember { mutableStateOf(null) }
     var showUncheckDialog by remember { mutableStateOf(false) }
     var taskToUncheck: Task? by remember { mutableStateOf(null) }
 
+    // Estado para el Pager que permite deslizar entre pestañas
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
 
+    // Acción para eliminar una tarea, mostrando un Snackbar con opción de "Deshacer"
+    val deleteTaskAction = { task: Task ->
+        taskViewModel.deleteTask(task)
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = "Tarea eliminada",
+                actionLabel = "Deshacer",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                taskViewModel.undoDelete()
+            }
+        }
+    }
+
+    // Acción para añadir una nueva tarea, con validación de campo vacío
     val addTaskAction = {
         if (taskViewModel.newTaskName.isNotBlank()) {
             taskViewModel.addTask()
@@ -85,7 +112,7 @@ fun TaskListScreen(taskViewModel: TaskViewModel = viewModel()) {
         }
     }
 
-    // Date Picker Dialog
+    // Diálogo para seleccionar la fecha de vencimiento de una tarea
     if (showDatePicker && taskToSetDate != null) {
         val datePickerState = rememberDatePickerState()
         DatePickerDialog(
@@ -94,96 +121,70 @@ fun TaskListScreen(taskViewModel: TaskViewModel = viewModel()) {
                 TextButton(onClick = {
                     taskViewModel.onDueDateChange(taskToSetDate!!, datePickerState.selectedDateMillis)
                     showDatePicker = false
-                }) {
-                    Text("OK")
-                }
+                }) { Text("OK") }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancelar")
-                }
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
             }
-        ) {
-            DatePicker(state = datePickerState)
-        }
+        ) { DatePicker(state = datePickerState) }
     }
 
-    // Uncheck Task Dialog
+    // Diálogo que aparece al desmarcar una tarea completada
     if (showUncheckDialog && taskToUncheck != null) {
         AlertDialog(
             onDismissRequest = { showUncheckDialog = false },
             title = { Text("Tarea Desmarcada") },
             text = { Text("¿Deseas mover la tarea a 'Pendientes' o borrarla permanentemente?") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        taskViewModel.onTaskCheckedChanged(taskToUncheck!!, false)
-                        showUncheckDialog = false
-                    }
-                ) {
-                    Text("MOVER A PENDIENTES")
-                }
+                TextButton(onClick = {
+                    taskViewModel.onTaskCheckedChanged(taskToUncheck!!, false)
+                    showUncheckDialog = false
+                }) { Text("MOVER A PENDIENTES") }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        taskViewModel.deleteTask(taskToUncheck!!)
-                        showUncheckDialog = false
-                    }
-                ) {
-                    Text("BORRAR", color = MaterialTheme.colorScheme.error)
-                }
+                TextButton(onClick = {
+                    deleteTaskAction(taskToUncheck!!)
+                    showUncheckDialog = false
+                }) { Text("BORRAR", color = MaterialTheme.colorScheme.error) }
             }
         )
     }
 
+    // Estructura principal de la pantalla con barra superior y barra de snacks
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Lista de tareas", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Blue)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
             )
         },
-        snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    containerColor = CompletedGreen,
-                    contentColor = Color.White
-                )
-            }
-        },
+        snackbarHost = { SnackbarHost(snackbarHostState) { data ->
+            val isUndo = data.visuals.actionLabel == "Deshacer"
+            val containerColor = if(isUndo) MaterialTheme.colorScheme.secondary else CompletedGreen
+            Snackbar(snackbarData = data, containerColor = containerColor, contentColor = if(isUndo) Color.Black else Color.White)
+        } },
         containerColor = LightGrayBackground
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
         ) {
-            // Input Section
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Sección para añadir nuevas tareas
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = taskViewModel.newTaskName,
-                    onValueChange = {
-                        taskViewModel.onNewTaskNameChange(it)
-                        if (showError) showError = false
-                    },
+                    onValueChange = { taskViewModel.onNewTaskNameChange(it).also { showError = false } },
                     label = { Text("Añadir una tarea...") },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Blue,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = Color.Gray,
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
                         errorBorderColor = MaterialTheme.colorScheme.error,
                         focusedTextColor = Color.Black,
                         unfocusedTextColor = Color.Black,
-                        cursorColor = Blue
+                        cursorColor = MaterialTheme.colorScheme.primary
                     ),
                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { addTaskAction() }),
@@ -193,43 +194,32 @@ fun TaskListScreen(taskViewModel: TaskViewModel = viewModel()) {
                 Spacer(modifier = Modifier.width(8.dp))
                 FloatingActionButton(
                     onClick = { addTaskAction() },
-                    containerColor = Blue,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White,
                     shape = CircleShape,
                     modifier = Modifier.size(50.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Task")
-                }
+                ) { Icon(Icons.Default.Add, "Add Task") }
             }
 
+            // Mensaje de error si la tarea está vacía
             if (showError) {
-                Text(
-                    text = "La tarea no puede estar vacía",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-                )
+                Text("La tarea no puede estar vacía", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Filter Tabs
+            // Pestañas para filtrar tareas
             TaskFilterTabs(
                 selectedTabIndex = pagerState.currentPage,
-                onTabSelected = {
-                    scope.launch { pagerState.animateScrollToPage(it) }
-                }
+                onTabSelected = { scope.launch { pagerState.animateScrollToPage(it) } }
             )
 
-            // Pager with Task Lists
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize().padding(top = 16.dp)
-            ) { page ->
+            // Pager horizontal que contiene las listas de tareas
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().padding(top = 16.dp)) { page ->
                 val tasks = when (page) {
                     0 -> taskViewModel.allTasks
                     1 -> taskViewModel.pendingTasks
-                    2 -> taskViewModel.completedTasks
-                    else -> emptyList()
+                    else -> taskViewModel.completedTasks
                 }
                 TaskList(
                     tasks = tasks,
@@ -241,44 +231,47 @@ fun TaskListScreen(taskViewModel: TaskViewModel = viewModel()) {
                             taskViewModel.onTaskCheckedChanged(task, isChecked)
                         }
                     },
-                    onDeleteTask = { taskViewModel.deleteTask(it) },
-                    onDateClick = {
-                        taskToSetDate = it
-                        showDatePicker = true
-                    }
+                    onDeleteTask = { deleteTaskAction(it) },
+                    onDateClick = { taskToSetDate = it; showDatePicker = true }
                 )
             }
         }
     }
 }
 
+/**
+ * Muestra las pestañas de filtro (Todas, Pendientes, Completadas).
+ * Se sincroniza con el `HorizontalPager`.
+ *
+ * @param selectedTabIndex El índice de la pestaña actualmente seleccionada.
+ * @param onTabSelected Lambda que se invoca cuando el usuario pulsa una pestaña.
+ */
 @Composable
 fun TaskFilterTabs(selectedTabIndex: Int, onTabSelected: (Int) -> Unit) {
     val filters = listOf("Todas", "Pendientes", "Completadas")
-
     TabRow(
         selectedTabIndex = selectedTabIndex,
         containerColor = LightGrayBackground,
-        contentColor = Blue,
+        contentColor = MaterialTheme.colorScheme.primary,
         indicator = { tabPositions ->
-            TabRowDefaults.Indicator(
-                Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                color = Blue
-            )
+            TabRowDefaults.Indicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = MaterialTheme.colorScheme.primary)
         }
     ) {
         filters.forEachIndexed { index, title ->
-            Tab(
-                selected = selectedTabIndex == index,
-                onClick = { onTabSelected(index) },
-                text = { Text(title) },
-                selectedContentColor = Blue,
-                unselectedContentColor = Color.Gray
-            )
+            Tab(selected = selectedTabIndex == index, onClick = { onTabSelected(index) }, text = { Text(title) }, selectedContentColor = MaterialTheme.colorScheme.primary, unselectedContentColor = Color.Gray)
         }
     }
 }
 
+/**
+ * Dibuja la lista de tareas. Implementa la funcionalidad de "deslizar para borrar".
+ *
+ * @param tasks La lista de tareas a mostrar.
+ * @param onTaskCheckedChanged Lambda para manejar el cambio de estado de una tarea.
+ * @param onDeleteTask Lambda para manejar la eliminación de una tarea.
+ * @param onDateClick Lambda para abrir el selector de fecha.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskList(
     tasks: List<Task>,
@@ -286,19 +279,64 @@ fun TaskList(
     onDeleteTask: (Task) -> Unit,
     onDateClick: (Task) -> Unit
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         items(tasks, key = { it.id }) { task ->
-            TaskItem(
-                task = task,
-                onTaskCheckedChanged = onTaskCheckedChanged,
-                onDeleteTask = onDeleteTask,
-                onDateClick = onDateClick
+            val dismissState = rememberSwipeToDismissBoxState(
+                confirmValueChange = {
+                    if (it == SwipeToDismissBoxValue.EndToStart) {
+                        onDeleteTask(task)
+                        true
+                    } else false
+                }
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            SwipeToDismissBox(
+                state = dismissState,
+                enableDismissFromStartToEnd = false,
+                enableDismissFromEndToStart = true,
+                backgroundContent = {
+                    val color = when (dismissState.targetValue) {
+                        SwipeToDismissBoxValue.EndToStart -> DismissRed
+                        else -> Color.Transparent
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(color)
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = Color.White
+                        )
+                    }
+                },
+                content = { 
+                    TaskItem(
+                        task = task, 
+                        onTaskCheckedChanged = onTaskCheckedChanged, 
+                        onDeleteTask = onDeleteTask, 
+                        onDateClick = onDateClick
+                    )
+                }
+            )
         }
     }
 }
 
+/**
+ * Muestra un único elemento de la lista de tareas.
+ *
+ * @param task El objeto de la tarea a dibujar.
+ * @param onTaskCheckedChanged Lambda para el cambio de estado de completado.
+ * @param onDeleteTask Lambda para la eliminación de la tarea.
+ * @param onDateClick Lambda para la selección de fecha.
+ */
 @Composable
 fun TaskItem(
     task: Task,
@@ -309,64 +347,43 @@ fun TaskItem(
     val dateFormatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(TaskItemGray)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(TaskItemGray).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CustomCheckbox(checked = task.isCompleted, onCheckedChange = { onTaskCheckedChanged(task, it) })
-
         Spacer(modifier = Modifier.width(16.dp))
-
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = task.name,
-                color = Color.White,
-                textAlign = TextAlign.Start,
-                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null
-            )
+            Text(task.name, color = Color.White, textAlign = TextAlign.Start, textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null)
             if (task.dueDate != null) {
-                Text(
-                    text = dateFormatter.format(Date(task.dueDate!!)),
-                    color = Color.LightGray,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                Text(dateFormatter.format(Date(task.dueDate!!)), color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
-
-        IconButton(onClick = { onDateClick(task) }) {
-            Icon(Icons.Default.DateRange, contentDescription = "Set Date", tint = Color.White)
-        }
-
-        IconButton(onClick = { onDeleteTask(task) }) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete Task", tint = Color.White)
-        }
+        IconButton(onClick = { onDateClick(task) }) { Icon(Icons.Default.DateRange, "Set Date", tint = Color.White) }
+        IconButton(onClick = { onDeleteTask(task) }) { Icon(Icons.Default.Delete, "Delete Task", tint = Color.White) }
     }
 }
 
+/**
+ * Un checkbox personalizado con forma circular para que coincida con el diseño.
+ *
+ * @param checked `true` si está marcado, `false` en caso contrario.
+ * @param onCheckedChange Lambda que se invoca cuando el usuario pulsa el checkbox.
+ */
 @Composable
-fun CustomCheckbox(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
+fun CustomCheckbox(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Box(
-        modifier = Modifier
-            .size(24.dp)
-            .clip(CircleShape)
-            .background(if (checked) CompletedGreen else Color.Transparent)
-            .border(2.dp, if (checked) CompletedGreen else Color.White, CircleShape)
-            .clickable { onCheckedChange(!checked) },
+        modifier = Modifier.size(24.dp).clip(CircleShape).background(if (checked) CompletedGreen else Color.Transparent).border(2.dp, if (checked) CompletedGreen else Color.White, CircleShape).clickable { onCheckedChange(!checked) },
         contentAlignment = Alignment.Center
     ) {
         if (checked) {
-            Icon(Icons.Default.Check, contentDescription = "Checked", tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Check, "Checked", tint = Color.White, modifier = Modifier.size(16.dp))
         }
     }
 }
 
+/**
+ * Una vista previa para el entorno de desarrollo de Android Studio.
+ */
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
