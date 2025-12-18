@@ -12,3 +12,8 @@ val Pink40 = Color(0xFF7D5260)
 
 val LightBlue = Color(0xFFBAE6FF)
 val Blue = Color(0xFF33B1FF)
+
+// Colores para el nuevo diseño
+val TaskItemGray = Color(0xFF4A4A4A)
+val CompletedGreen = Color(0xFF2ECC71)
+val LightGrayBackground = Color(0xFFF5F5F5)
